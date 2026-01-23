@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime
 from rabbitmq.connection import get_channel
 from mail.sender import send_email
@@ -29,8 +30,7 @@ def handle_verification_message(ch, method, properties, body):
 
 def start_verification_consumer():
     channel = get_channel()
-    
-    exchange = "forum.events"
+    exchange = os.environ.get("RABBITMQ_USER_EXCHANGE", "forum.events") 
     queue_name = "email_service_queue"
     routing_key = "user.verify_email"
     

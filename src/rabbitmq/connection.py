@@ -23,8 +23,6 @@ def connect_rabbitmq():
         
         connection = pika.BlockingConnection(params)
         
-        connection.add_on_close_callback(_on_connection_closed)
-        connection.add_on_open_error_callback(_on_connection_error)
         
         channel = connection.channel()
         
@@ -37,20 +35,6 @@ def connect_rabbitmq():
         connection = None
         channel = None
         raise
-
-
-def _on_connection_closed(connection_unused, reason):
-    global connection, channel
-    print(f"[{datetime.now().isoformat()}] [WARN] RabbitMQ connection closed: {reason}")
-    connection = None
-    channel = None
-
-
-def _on_connection_error(connection_unused, error):
-    global connection, channel
-    print(f"[{datetime.now().isoformat()}] [ERROR] RabbitMQ connection error: {error}")
-    connection = None
-    channel = None
 
 
 def get_channel():
