@@ -1,99 +1,67 @@
-import os
-import json
-import pika
-from dotenv import load_dotenv
-from pathlib import Path
-
-import smtplib
-from email.message import EmailMessage
-
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
-load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
-
-def send_verification_email(to_email, token):
-    verify_link = f"{os.environ.get('APP_BASE_URL', 'http://127.0.0.1:3000')}/users/verify?token={token}"
-
-    msg = EmailMessage()
-    msg["Subject"] = "Verify your email"
-    msg["From"] = os.environ["SMTP_FROM"]
-    msg["To"] = to_email
-
-    msg.set_content(
-            f"""Hello!
-
-Click this link to verify your email:
-
-{verify_link}
-
-If you didn’t create this account, ignore this email.
-"""
-)
-
-    host = os.environ["SMTP_HOST"]
-    port = int(os.environ["SMTP_PORT"])
-    user = os.environ["SMTP_USER"]
-    password = os.environ["SMTP_PASS"]
-
-    with smtplib.SMTP(host, port) as server:
-        server.starttls()
-        server.login(user, password)
-        server.send_message(msg)
+import sys
+import threading
+import signal
+from datetime import datetime
+from rabbitmq.connection import connect_rabbitmq, close_rabbitmq
+from consumers.verification_consumer import start_verification_consumer
+from consumers.contact_consumer import start_contact_consumer
 
 
-def handle_message(ch, method, properties, body):
+def run_verification_consumer():
     try:
-        payload = json.loads(body.decode("utf-8"))
-        user_id = payload.get("userID")
-        email = payload.get("email")
-        token = payload.get("token")
-
-        send_verification_email(email, token)
-        print(f"[EMAIL SERVICE] send verification email -> userId={user_id} email={email}")
-
-        ch.basic_ack(delivery_tag=method.delivery_tag)
-
+        start_verification_consumer()
     except Exception as e:
-        print(f"[EMAIL SERVICE] ERROR: {e}")
-        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+        print(f"[{datetime.now().isoformat()}] [VERIFICATION] Consumer error: {e}")
+
+
+def run_contact_consumer():
+    try:
+        start_contact_consumer()
+    except Exception as e:
+        print(f"[{datetime.now().isoformat()}] [CONTACT] Consumer error: {e}")
 
 
 def main():
-    creds = pika.PlainCredentials(
-        os.environ["RABBITMQ_USER"],
-        os.environ["RABBITMQ_PASS"],
-    )
-
-    params = pika.ConnectionParameters(
-        host=os.environ["RABBITMQ_HOST"],
-        virtual_host=os.environ.get("RABBITMQ_VHOST", "/"),
-        credentials=creds,
-        heartbeat=60,
-        blocked_connection_timeout=30,
-    )
-
-    connection = pika.BlockingConnection(params)
-    channel = connection.channel()
-
-    exchange = os.environ.get("RABBITMQ_EXCHANGE", "forum.events")
-    channel.exchange_declare(exchange=exchange, exchange_type="topic", durable=True)
-
-    queue_name = "email_service_queue"
-    channel.queue_declare(queue=queue_name, durable=True)
-
-    channel.queue_bind(
-        exchange=exchange,
-        queue=queue_name,
-        routing_key="user.verify_email",
-    )
-
-    channel.basic_qos(prefetch_count=1)
-
-    print("[EMAIL SERVICE] waiting for messages...")
-    channel.basic_consume(queue=queue_name, on_message_callback=handle_message)
-
-    channel.start_consuming()
+    if len(sys.argv) > 1:
+        consumer_type = sys.argv[1].lower()
+        
+        connect_rabbitmq()
+        
+        if consumer_type == "verification":
+            print(f"[{datetime.now().isoformat()}] [MAIN] Starting verification consumer only...")
+            start_verification_consumer()
+        elif consumer_type == "contact":
+            print(f"[{datetime.now().isoformat()}] [MAIN] Starting contact consumer only...")
+            start_contact_consumer()
+        else:
+            print(f"[{datetime.now().isoformat()}] [ERROR] Unknown consumer type: {consumer_type}")
+            print("Usage: python main.py [verification|contact]")
+            sys.exit(1)
+    else:
+        print(f"[{datetime.now().isoformat()}] [MAIN] Starting both consumers...")
+        
+        connect_rabbitmq()
+        
+        verification_thread = threading.Thread(target=run_verification_consumer, daemon=True)
+        contact_thread = threading.Thread(target=run_contact_consumer, daemon=True)
+        
+        verification_thread.start()
+        contact_thread.start()
+        
+        def signal_handler(sig, frame):
+            print(f"\n[{datetime.now().isoformat()}] [MAIN] Shutting down...")
+            close_rabbitmq()
+            sys.exit(0)
+        
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        
+        try:
+            verification_thread.join()
+            contact_thread.join()
+        except KeyboardInterrupt:
+            signal_handler(None, None)
 
 
 if __name__ == "__main__":
     main()
-
