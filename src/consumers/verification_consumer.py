@@ -1,8 +1,8 @@
 import json
 from datetime import datetime
 from rabbitmq.connection import get_channel
-from email.sender import send_email
-from email.templates import format_verification_email
+from mail.sender import send_email
+from mail.templates import format_verification_email
 
 
 def handle_verification_message(ch, method, properties, body):
