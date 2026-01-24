@@ -1,12 +1,15 @@
-from config import get_app_base_url
+import os
 
-
-def format_verification_email(token):
-    verify_link = f"{get_app_base_url()}/users/verify?token={token}"
+def format_verification_email(token,code):
+    app_url = os.environ.get("REACT_BASE_URL","http://127.0.0.1:5173")
+    verify_link = f"{app_url}/users/verify?token={token}"
     
     return f"""Hello!
 
-Click this link to verify your email:
+This is your verification code for your account:
+    {code}
+
+Alternatively, click this link to verify your email:
 
 {verify_link}
 

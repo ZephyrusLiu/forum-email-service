@@ -21,7 +21,3 @@ def get_smtp_config():
         "password": os.environ["SMTP_PASS"],
         "from_email": os.environ["SMTP_FROM"],
     }
-
-
-def get_app_base_url():
-    return os.environ.get("APP_BASE_URL", "http://127.0.0.1:3000")

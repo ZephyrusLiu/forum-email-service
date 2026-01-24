@@ -12,11 +12,12 @@ def handle_verification_message(ch, method, properties, body):
         user_id = payload.get("userID")
         email = payload.get("email")
         token = payload.get("token")
+        code = payload.get("code")
 
-        if not email or not token:
+        if not email or not token or not code:
             raise ValueError("Missing required fields: email or token")
 
-        email_body = format_verification_email(token)
+        email_body = format_verification_email(token,code)
         send_email(email, "Verify your email", email_body)
         
         print(f"[{datetime.now().isoformat()}] [VERIFICATION] Sent verification email -> userId={user_id} email={email}")
@@ -31,6 +32,8 @@ def handle_verification_message(ch, method, properties, body):
 def start_verification_consumer():
     channel = get_channel()
     exchange = os.environ.get("RABBITMQ_USER_EXCHANGE", "forum.events") 
+
+    print(f"USING EXCHANGE {exchange}")
     queue_name = "email_service_queue"
     routing_key = "user.verify_email"
     
